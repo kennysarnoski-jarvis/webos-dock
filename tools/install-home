@@ -1,0 +1,68 @@
+#!/bin/sh
+# Make Dock LG's Home screen (or update it): stage the app on the TV with an appinfo.json derived
+# from LG's own Home, mount it over LG's Home, and (re)load it. Undo: tools/restore-lg-home.
+#   tools/install-home
+#   tools/install-home --stage   # only put the new files in place: nothing on screen changes, and
+#                                # the update shows the next time Home reloads (safe mid-movie)
+set -e
+stage_only=0; [ "$1" = "--stage" ] && stage_only=1
+here=$(cd "$(dirname "$0")/.." && pwd)
+tvsh="$here/tools/tvsh"
+mkdir -p "$here/dist"
+
+# LG's own Home appinfo for this TV, kept in its backup directory; taken from the TV the first time
+backup=$("$here/tools/tv-backup-dir")
+orig="$backup/home-appinfo.orig.json"
+if [ ! -f "$orig" ]; then
+    if "$tvsh" 'grep -q " /usr/palm/applications/com.webos.app.home " /proc/mounts'; then
+        echo "no $orig saved, and Dock already covers LG Home on this TV: run tools/restore-lg-home first" >&2; exit 1
+    fi
+    mkdir -p "$backup"
+    "$tvsh" 'cat /usr/palm/applications/com.webos.app.home/appinfo.json' > "$orig"
+    echo "saved LG Home's appinfo.json to $orig"
+fi
+
+python3 -I - "$orig" "$here/app/appinfo.json" > "$here/dist/home-appinfo.json" <<'EOF'
+import json, sys
+lg = json.load(open(sys.argv[1]))
+ours = json.load(open(sys.argv[2]))
+h = dict(lg)
+for k in ('nativeLifeCycleInterfaceVersion', 'containerBasedApp', 'supportQuickStart', 'windowGroup',
+          'qmlIncludePath', 'qtModules', 'splashBackground', 'noSplashOnLaunch', 'mediumIcon'):
+    h.pop(k, None)
+h.update({'type': 'web', 'main': 'index.html', 'version': ours['version'], 'vendor': ours['vendor'],
+          'bgColor': '#000000', 'transparent': False, 'icon': 'icon.png', 'largeIcon': 'largeIcon.png',
+          'iconColor': ours.get('iconColor', '#000000'), 'handlesRelaunch': True,
+          'resolution': '1920x1080', 'requiredPermissions': ['all']})
+print(json.dumps(h, indent=2))
+EOF
+
+echo "staging app files on the TV"
+(cd "$here/app" && COPYFILE_DISABLE=1 tar --no-xattrs -czf - .) | "$tvsh" 'mkdir -p /media/developer/dock-home && tar xzf - -C /media/developer/dock-home'
+"$tvsh" 'cat > /media/developer/dock-home/appinfo.json && sync' < "$here/dist/home-appinfo.json"
+if [ "$stage_only" = 1 ]; then echo "staged; shows the next time Home reloads"; exit 0; fi
+"$here/tools/push-hook" >/dev/null
+"$tvsh" 'sh -s' <<'EOF'
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
+H=/usr/palm/applications/com.webos.app.home
+rm -f /var/lib/webosbrew/tvproject/DISABLE-HOME
+if grep -q " $H " /proc/mounts; then
+    # webOS 6 keeps the old page alive in WebAppMgr; a relaunch alone brings the old page back
+    echo "reloading Dock as Home (webapp-mgr restart)"
+    systemctl restart webapp-mgr
+    for i in $(seq 1 30); do systemctl is-active webapp-mgr >/dev/null 2>&1 && break; sleep 1; done
+    sleep 3
+    luna-send -n 1 -w 10000 luna://com.webos.applicationManager/launch '{"id":"com.webos.app.home"}' </dev/null >/dev/null
+else
+    echo "mounting Dock as Home (sam restart: the screen goes black for a bit)"
+    /var/lib/webosbrew/init.d/30-tvproject-home
+fi
+EOF
+echo "waiting for Home to come up"
+for i in $(seq 1 45); do
+    fg=$(python3 -I "$here/tools/lgtv.py" foreground 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("appId",""))' 2>/dev/null || true)
+    [ "$fg" = "com.webos.app.home" ] && { echo "Dock is Home"; exit 0; }
+    sleep 2
+done
+echo "Home didn't come up within 90 s (foreground: ${fg:-?}); check the TV" >&2
+exit 1

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Grab what the LG is showing right now into a file, through its official API.
+#   tools/tv-shot out.png
+set -e
+here=$(cd "$(dirname "$0")/.." && pwd)
+out=${1:-shot.png}
+tmp=$(mktemp)
+python3 -I "$here/tools/lgtv.py" call ssap://tv/executeOneShot '{"path":"/tmp/tvproject-shot.png","method":"DISPLAY","format":"PNG","width":960,"height":540}' > "$tmp"
+uri=$(python3 -I -c "import json,sys; print(json.load(open(sys.argv[1])).get('imageUri',''))" "$tmp")
+rm -f "$tmp"
+[ -n "$uri" ] || { echo "no imageUri from the TV" >&2; exit 1; }
+curl -s -k -m 10 -o "$out" "$uri"
+echo "$out"

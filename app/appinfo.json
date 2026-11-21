@@ -1,0 +1,18 @@
+{
+  "id": "org.webosdock.app",
+  "version": "0.4.0",
+  "vendor": "webos-dock",
+  "type": "web",
+  "main": "index.html",
+  "title": "Dock",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#0b1020",
+  "resolution": "1920x1080",
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "supportQuickStart": false,
+  "requiredPermissions": ["applications", "applications.launcher"]
+}

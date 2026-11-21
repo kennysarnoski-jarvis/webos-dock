@@ -1,0 +1,47 @@
+#!/bin/sh
+# TV project: Dock as LG's Home. The staged copy in /media/developer/dock-home (the app plus an
+# appinfo.json derived from LG's own Home) is bind-mounted over LG's Home directory, and SAM,
+# which read LG's Home when it started, is restarted so it reads ours. The Home key, boot and
+# leaving an app then all land on Dock, because it *is* com.webos.app.home. RAM only: a reboot
+# without this hook is stock. Pause: touch /var/lib/webosbrew/tvproject/DISABLE-HOME
+# (tools/restore-lg-home does that and puts LG's Home back right away).
+# Follows cleanyourtv-WebOS's 10-cleanyourtv-home.
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
+D=/var/lib/webosbrew/tvproject
+S=/media/developer/dock-home
+H=/usr/palm/applications/com.webos.app.home
+[ -e "$D/DISABLE" ] && exit 0
+[ -e "$D/DISABLE-HOME" ] && exit 0
+[ -f "$S/appinfo.json" ] && [ -f "$S/index.html" ] || exit 0
+grep -q " $H " /proc/mounts && exit 0
+# A web app wearing LG's Home id has no bus identity of its own (LG's Home is native and
+# authenticates by its binary), so the hub drops its calls. Give it what the app installer
+# gives a dev app: a role, the groups Dock needs (Homebrew Channel's exec among them) and a
+# manifest tying them together. tools/restore-lg-home removes them.
+changed=0
+for pair in "home-acg-role.json roles.d/com.webos.app.home.app.json" \
+            "home-client-permissions.json client-permissions.d/com.webos.app.home.app.json" \
+            "home-acg-manifest.json manifests.d/org.tvproject.dockhome.json"; do
+    set -- $pair
+    if [ -f "$D/$1" ] && ! cmp -s "$D/$1" "/var/luna-service2-dev/$2"; then
+        cp "$D/$1" "/var/luna-service2-dev/$2" && changed=1
+    fi
+done
+[ "$changed" = 1 ] && ls-control scan-services >/dev/null 2>&1
+mount --bind "$S" "$H" || exit 1
+echo "tvproject: Dock mounted over LG Home, restarting sam"
+# an AirPlay child of sam makes the stop wait ~90 s; kill it once the stop has begun
+(sleep 3; pkill -9 -f /usr/palm/applications/airplay/LunaExecutable) </dev/null >/dev/null 2>&1 &
+systemctl daemon-reload 2>/dev/null
+systemctl restart sam
+# After the restart nothing is in the foreground. Once sam is back, open Home, unless the person
+# already went somewhere else.
+(
+    for i in $(seq 1 60); do systemctl is-active sam >/dev/null 2>&1 && break; sleep 2; done
+    sleep 6
+    fg=$(luna-send -n 1 -w 5000 luna://com.webos.applicationManager/getForegroundAppInfo '{}' </dev/null | sed -n 's/.*"appId":"\([^"]*\)".*/\1/p')
+    case "$fg" in
+        ""|com.webos.app.home)
+            luna-send -n 1 -w 10000 luna://com.webos.applicationManager/launch '{"id":"com.webos.app.home"}' </dev/null >/dev/null ;;
+    esac
+) </dev/null >/dev/null 2>&1 &

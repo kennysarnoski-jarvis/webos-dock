@@ -1,0 +1,61 @@
+#!/bin/sh
+# TV project: privacy boot hook for the rooted LG. Homebrew Channel runs every
+# executable in /var/lib/webosbrew/init.d at boot; this one is pushed there by
+# tools/push-hook. Everything it does lives in RAM: a reboot without this file
+# restores the TV. Pause it without deleting: touch /var/lib/webosbrew/tvproject/DISABLE
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
+D=/var/lib/webosbrew/tvproject
+[ -e "$D/DISABLE" ] && exit 0
+log() { echo "tvproject: $*"; }
+
+# 1. LG ad, ACR and telemetry hosts (tv/hosts-block-lg.txt) -> localhost, through a
+#    writable copy of /etc/hosts. Homebrew Channel's update block makes that copy
+#    first when it's on; otherwise we make it.
+if [ -s "$D/hosts-block-lg.txt" ] && ! grep -q '# tvproject' /etc/hosts; then
+    if ! grep -q ' /etc/hosts ' /proc/mounts; then
+        cp /etc/hosts /tmp/hosts && mount --bind /tmp/hosts /etc/hosts
+    fi
+    {
+        echo ''
+        echo '# tvproject: LG ad, ACR and telemetry hosts'
+        grep -v -E '^[[:space:]]*(#|$)' "$D/hosts-block-lg.txt" |
+            awk '{print "127.0.0.1 " $1 " # tvproject"; print "::1 " $1 " # tvproject"}'
+    } >> /etc/hosts && log "hosts: $(grep -c '# tvproject' /etc/hosts) lines added"
+fi
+
+# 2. systemd daemons we don't want: log shipping to LG, content mining, promo nudges. Stopped,
+#    and masked for this boot (a symlink under /run, so RAM only), because on the slower TV
+#    remotelogger and nudge were started again later in the boot, after this hook had run.
+#    Undo: systemctl unmask --runtime <name>.service; systemctl start <name>.service
+for s in $(cat "$D/stop-services" 2>/dev/null); do
+    systemctl mask --runtime "$s.service" >/dev/null 2>&1
+    systemctl stop "$s.service" 2>/dev/null && log "stopped $s"
+done
+
+# 3. On-demand services (started by ls-hubd when something asks) and system apps we
+#    never want: a do-nothing stub bind-mounted over the binary keeps them down. The
+#    real files are untouched. A bare name means /usr/sbin/<name>; a path is used as is.
+#    Undo: umount <path>
+printf '#!/bin/sh\nexit 0\n' > "$D/stub-noop"; chmod +x "$D/stub-noop"
+for b in $(cat "$D/stub-services" 2>/dev/null); do
+    case "$b" in /*) path="$b" ;; *) path="/usr/sbin/$b" ;; esac
+    [ -e "$path" ] || continue
+    grep -q " $path " /proc/mounts || mount --bind "$D/stub-noop" "$path"
+    pkill -9 -f "^$path" 2>/dev/null
+    log "stubbed $path"
+done
+
+# 4. No background apps: a watcher closes apps left in the background (no-background-apps.sh).
+#    Undo: pkill -f no-background-apps.sh
+if [ -x "$D/no-background-apps.sh" ] && ! pgrep -f no-background-apps.sh >/dev/null 2>&1; then
+    ("$D/no-background-apps.sh" </dev/null >>/tmp/tvproject-bgapps.log 2>&1 &)
+    log "background-app watcher started"
+fi
+
+# 5. The privacy settings and declined agreements, checked and re-applied once the settings
+#    service is up (LG puts some back on its own; privacy-settings.js lists them). Undo: the
+#    before-state in backups/<tv>/settings.json, written back with the same calls.
+if [ -x "$D/privacy-settings.js" ]; then
+    ("$D/privacy-settings.js" </dev/null >>/tmp/tvproject-settings.log 2>&1 &)
+    log "privacy settings check started"
+fi

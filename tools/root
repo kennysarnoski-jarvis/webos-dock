@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""
+Root the TV with the vendored SlopBro: hands it the pairing key lgtv.py saved (so the TV asks for
+no second Allow), works out this computer's address on the TV's network, and runs it from its own
+directory. Watch the TV: it toasts each step and ends with a reboot dialog. After the reboot,
+tools/bootstrap-root. No reboot dialog? docs/PLAYBOOK.md has the remote way.
+  tools/root            # the TV LGTV_HOST points at, else the first in tools/tvs.conf
+"""
+import pathlib
+import socket
+import subprocess
+import sys
+
+here = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(here / "tools"))
+from lgtv import default_host, load_key  # noqa: E402
+
+host = default_host()
+if not host:
+    sys.exit("no TV address: set LGTV_HOST, or list the TV in tools/tvs.conf (copy tools/tvs.conf.example)")
+scripts = sorted((here / "vendor").glob("slopbro-*/slopbro.py"))
+if not scripts:
+    sys.exit("no vendor/slopbro-*/slopbro.py")
+slopbro = scripts[-1]
+key = load_key(host)
+if key:
+    (slopbro.parent / f"{host}.key").write_text(key)   # git ignores *.key
+else:
+    print("not paired yet: the TV will ask to allow this computer (tools/lgtv.py pair first spares the second prompt)")
+probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+probe.connect((host, 3000))
+local_ip = probe.getsockname()[0]
+cmd = [sys.executable, "-I", slopbro.name, "--local-ip", local_ip, host]
+print("running:", " ".join(cmd), "in", slopbro.parent)
+sys.exit(subprocess.call(cmd, cwd=slopbro.parent))

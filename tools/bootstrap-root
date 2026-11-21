@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""
+Right after SlopBro's reboot, Homebrew Channel's root telnet is open with no password. Over it,
+this installs the project's SSH key for root, turns sshd on (now, and at boot), blocks firmware
+updates at boot, and then closes telnet. After it, tools/tvsh works.
+  tools/bootstrap-root            # the TV LGTV_HOST points at, else the first in tools/tvs.conf (tools/tv <name> bootstrap-root)
+"""
+import os, pathlib, subprocess, sys, telnetlib, time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from lgtv import default_host  # noqa: E402
+
+HOST = default_host()
+if not HOST:
+    sys.exit("no TV address: set LGTV_HOST, or list the TV in tools/tvs.conf (copy tools/tvs.conf.example)")
+HERE = pathlib.Path(__file__).resolve().parent.parent
+HBC = "/media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service"
+PUB = (HERE / ".secrets" / "lgtv_ed25519.pub").read_text().strip()
+assert PUB.startswith("ssh-ed25519 "), "unexpected public key"
+
+tn = telnetlib.Telnet(HOST, 23, timeout=20)
+time.sleep(1.5)
+banner = tn.read_very_eager().decode(errors="replace")
+print(banner.strip()[-400:])
+script = "\n".join([
+    "export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH",
+    "mkdir -p /home/root/.ssh && chmod 700 /home/root/.ssh",
+    "grep -qF '%s' /home/root/.ssh/authorized_keys 2>/dev/null || echo '%s' >> /home/root/.ssh/authorized_keys" % (PUB, PUB),
+    "chmod 600 /home/root/.ssh/authorized_keys && chown 0:0 /home/root/.ssh/authorized_keys",
+    "touch /var/luna/preferences/webosbrew_sshd_enabled /var/luna/preferences/webosbrew_block_updates",
+    "sync -f /var/luna/preferences",
+    "mkdir -p /var/lib/webosbrew/sshd",
+    "pgrep dropbear >/dev/null 2>&1 || %s/bin/dropbear -R" % HBC,
+    "sleep 2",
+    "echo; echo KEY: $(wc -c < /home/root/.ssh/authorized_keys) bytes; echo DROPBEAR: $(pgrep dropbear | tr '\\n' ' ');"
+    " echo FLAGS: $(ls /var/luna/preferences | grep webosbrew | tr '\\n' ' '); echo BOOTSTRAP-DONE",
+    "",
+])
+tn.write(script.encode())
+out = tn.read_until(b"BOOTSTRAP-DONE", timeout=40).decode(errors="replace")
+print("\n".join(l for l in out.splitlines() if l.startswith(("KEY:", "DROPBEAR:", "FLAGS:"))))
+if "BOOTSTRAP-DONE" not in out:
+    print("telnet session did not finish:\n" + out[-800:], file=sys.stderr)
+    sys.exit(1)
+
+tvsh = str(HERE / "tools" / "tvsh")
+for attempt in range(6):
+    r = subprocess.run([tvsh, "id -u"], capture_output=True, text=True, env={**os.environ, "LGTV_HOST": HOST})
+    if r.stdout.strip() == "0":
+        break
+    time.sleep(3)
+else:
+    print("ssh as root did not come up; telnet left open:\n" + r.stderr, file=sys.stderr)
+    sys.exit(1)
+print("ssh as root: ok")
+# only once ssh works: no more unauthenticated root shell, now and at boot
+subprocess.run([tvsh, "touch /var/luna/preferences/webosbrew_telnet_disabled; sync -f /var/luna/preferences; pkill telnetd; echo telnet closed"],
+               env={**os.environ, "LGTV_HOST": HOST})
+tn.close()

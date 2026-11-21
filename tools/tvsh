@@ -1,0 +1,15 @@
+#!/bin/sh
+# Run a command on the rooted LG as root over SSH, with the project's own key.
+#   tools/tvsh id
+#   tools/tvsh 'free; uptime'
+#   tools/tvsh                # interactive shell
+# Set LGTV_HOST to talk to a different TV.
+here=$(cd "$(dirname "$0")/.." && pwd)
+# the TV: LGTV_HOST, else the first one listed in tools/tvs.conf
+host=${LGTV_HOST:-$(awk '!/^#/ && NF > 1 {print $2; exit}' "$here/tools/tvs.conf" 2>/dev/null)}
+[ -n "$host" ] || { echo "no TV address: set LGTV_HOST, or list the TV in tools/tvs.conf (copy tools/tvs.conf.example)" >&2; exit 2; }
+exec ssh -i "$here/.secrets/lgtv_ed25519" \
+  -o UserKnownHostsFile="$here/.secrets/known_hosts" \
+  -o StrictHostKeyChecking=accept-new \
+  -o ConnectTimeout=6 -o LogLevel=ERROR \
+  "root@$host" "$@"

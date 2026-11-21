@@ -1,0 +1,20 @@
+#!/bin/sh
+# Run a project tool against one TV by name (tools/tvs.conf), instead of setting LGTV_HOST by hand.
+#   tools/tv                               # the TVs
+#   tools/tv <name> install-home           # any tools/* script
+#   tools/tv <name> lgtv.py inputs
+#   tools/tv <name> tvsh 'free -m'         # a root shell command; no command: an interactive shell
+# With one TV, tools/tvs.conf's first line is the default and the tools work without a name.
+here=$(cd "$(dirname "$0")/.." && pwd)
+conf="$here/tools/tvs.conf"
+if [ $# -eq 0 ]; then awk '!/^#/ && NF {printf "%-12s %-14s backups/%s\n", $1, $2, $3}' "$conf"; exit 0; fi
+name=$1; shift
+host=$(awk -v n="$name" '!/^#/ && $1 == n {print $2}' "$conf")
+[ -n "$host" ] || { echo "no TV named '$name' in tools/tvs.conf" >&2; exit 2; }
+export LGTV_HOST="$host"
+[ $# -ge 1 ] || exec "$here/tools/tvsh"
+cmd=$1; shift
+case "$cmd" in
+    lgtv.py) exec python3 -I "$here/tools/lgtv.py" "$@" ;;
+    *) [ -x "$here/tools/$cmd" ] && exec "$here/tools/$cmd" "$@"; exec "$cmd" "$@" ;;
+esac

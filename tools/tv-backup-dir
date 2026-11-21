@@ -1,0 +1,6 @@
+#!/bin/sh
+# Print the backup directory for the TV LGTV_HOST points at (tools/tvs.conf), for scripts.
+here=$(cd "$(dirname "$0")/.." && pwd)
+host=${LGTV_HOST:-$(awk '!/^#/ && NF > 1 {print $2; exit}' "$here/tools/tvs.conf" 2>/dev/null)}
+dir=$(awk -v h="$host" '!/^#/ && $2 == h {print $3}' "$here/tools/tvs.conf")
+echo "$here/backups/${dir:-lg-$host}"

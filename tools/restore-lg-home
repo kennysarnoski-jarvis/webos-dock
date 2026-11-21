@@ -1,0 +1,24 @@
+#!/bin/sh
+# Put LG's own Home back, now and after reboots (until tools/install-home runs again).
+#   tools/restore-lg-home
+set -e
+here=$(cd "$(dirname "$0")/.." && pwd)
+"$here/tools/tvsh" 'sh -s' <<'EOF'
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
+D=/var/lib/webosbrew/tvproject
+H=/usr/palm/applications/com.webos.app.home
+touch "$D/DISABLE-HOME"
+for m in $(awk '$2 ~ /applications\/com.webos.app.home$/ {print $2}' /proc/mounts | sort -r); do umount "$m" 2>/dev/null || umount -l "$m"; done
+rm -f /var/luna-service2-dev/client-permissions.d/com.webos.app.home.app.json /var/luna-service2-dev/roles.d/com.webos.app.home.app.json /var/luna-service2-dev/manifests.d/org.tvproject.dockhome.json /var/luna-service2-dev/manifests.d/com.webos.app.home.json
+ls-control scan-services >/dev/null 2>&1
+(sleep 3; pkill -9 -f /usr/palm/applications/airplay/LunaExecutable) </dev/null >/dev/null 2>&1 &
+systemctl restart sam
+for i in $(seq 1 60); do systemctl is-active sam >/dev/null 2>&1 && break; sleep 2; done
+# drop the web renderer that still holds Dock's page
+systemctl restart webapp-mgr
+for i in $(seq 1 30); do systemctl is-active webapp-mgr >/dev/null 2>&1 && break; sleep 1; done
+sleep 5
+luna-send -n 1 -w 10000 luna://com.webos.applicationManager/launch '{"id":"com.webos.app.home"}' </dev/null
+echo
+echo "LG Home restored. DISABLE-HOME is set: reboots keep LG Home until tools/install-home runs again."
+EOF

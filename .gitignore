@@ -1,0 +1,11 @@
+# pairing keys, the SSH key, tokens
+.secrets/
+*.key
+# your TVs (copy tools/tvs.conf.example)
+tools/tvs.conf
+# what you saved from your TV before changing it
+backups/
+.DS_Store
+__pycache__/
+dist/
+preview/

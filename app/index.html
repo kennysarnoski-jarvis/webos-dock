@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Dock</title>
+<link rel="stylesheet" href="css/dock.css">
+</head>
+<body class="booting">
+<canvas id="sky" width="1920" height="1080"></canvas>
+<div id="fx"></div>
+<div id="dim"></div>
+<div id="stage">
+  <div id="clock"><div class="date"></div><div class="time"></div><div class="wx"></div></div>
+
+  <div id="market" class="glass">
+    <div class="head"><span class="title">Markets</span><span class="live"><i></i><b>Live</b></span></div>
+    <div class="coins"></div>
+  </div>
+
+  <div id="gear" class="glass focusable" data-zone="top">
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <g fill="#fff">
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(45 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(90 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(135 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(180 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(225 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(270 24 24)"/>
+        <rect x="20.5" y="2" width="7" height="10" rx="2.6" transform="rotate(315 24 24)"/>
+      </g>
+      <circle cx="24" cy="24" r="11.2" fill="none" stroke="#fff" stroke-width="7"/>
+    </svg>
+  </div>
+
+  <div id="dockwrap">
+    <div id="caption"><span></span></div>
+    <div id="dock"><div id="dockglass" class="glass"></div><div id="tiles"></div></div>
+  </div>
+
+  <div id="hintwrap"><div id="hint" class="glass"><div class="content"></div></div></div>
+  <div id="sheet"><div class="panel glass"><div class="content"></div></div></div>
+  <div id="island"><span class="ic"></span><span class="tx"></span></div>
+</div>
+<script src="js/platform.js"></script>
+<script src="js/preview.js"></script>
+<script src="js/wallpaper.js"></script>
+<script src="js/glass.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/clock.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/apps.js"></script>
+<script src="js/ticker.js"></script>
+<script src="js/dock.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+	"com.webos.app.home-*": [
+		"public",
+		"org.webosbrew.hbchannel.service.group",
+		"applications.launch",
+		"applications.internal",
+		"appinstalld.internal",
+		"eim.deviceInfo",
+		"notifications",
+		"tv.settings"
+	]
+}

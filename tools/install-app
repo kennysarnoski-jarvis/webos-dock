@@ -1,0 +1,28 @@
+#!/bin/sh
+# Build the app, push it to the rooted LG, install it there and open it.
+#   tools/install-app              # build, install, launch
+#   tools/install-app --no-launch
+#   tools/install-app --launch     # just open it
+set -e
+here=$(cd "$(dirname "$0")/.." && pwd)
+tvsh="$here/tools/tvsh"
+id=$(python3 -c "import json; print(json.load(open('$here/app/appinfo.json'))['id'])")
+launch() { "$tvsh" "luna-send -n 1 -w 8000 luna://com.webos.applicationManager/launch '{\"id\":\"$id\"}' </dev/null"; echo; }
+
+if [ "$1" = "--launch" ]; then launch; exit 0; fi
+
+ipk=$(python3 "$here/tools/build-ipk.py" | awk '{print $1}')
+"$tvsh" 'cat > /tmp/dock.ipk' < "$ipk"
+result=$("$tvsh" 'luna-send -n 30 -w 90000 luna://com.webos.appInstallService/dev/install "{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/dock.ipk\",\"subscribe\":true}" </dev/null 2>&1 | grep -m1 -E "\"installed\"|failed|rror|Unknown"; rm -f /tmp/dock.ipk')
+echo "$result"
+case "$result" in *installed*) ;; *) echo "install failed" >&2; exit 1 ;; esac
+# The app leans on Homebrew Channel's exec service. It has been seen wedged (zombie shells under
+# its node process, every call timing out): check it answers, and restart it if not (the hub
+# respawns it on the next call).
+"$tvsh" 'ok() { luna-send -n 1 -w 10000 luna://org.webosbrew.hbchannel.service/exec "{\"command\":\"id -u\"}" </dev/null | grep -q "\"stdoutString\":\"0"; }
+if ok; then echo "hbchannel exec: ok"; else
+  echo "hbchannel exec: not answering, restarting it"; pkill -9 -f "^org.webosbrew.hbchannel.service"; sleep 2
+  /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/elevate-service >/dev/null 2>&1
+  if ok; then echo "hbchannel exec: ok after restart"; else echo "hbchannel exec: STILL not answering" >&2; fi
+fi'
+[ "$1" = "--no-launch" ] || launch

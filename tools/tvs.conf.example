@@ -1,0 +1,4 @@
+# The TVs, one per line: a name, its address, and its backup directory under backups/.
+# Copy this file to tools/tvs.conf (which git ignores). The first line is the default TV when
+# LGTV_HOST isn't set, so with one TV every tool works without naming it.
+living-room 192.168.1.50  lg-living-room

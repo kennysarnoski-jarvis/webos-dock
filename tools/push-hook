@@ -1,0 +1,17 @@
+#!/bin/sh
+# Push the privacy boot hook and its lists to the rooted LG, then run it once now.
+#   tools/push-hook
+set -e
+here=$(cd "$(dirname "$0")/.." && pwd)
+tvsh="$here/tools/tvsh"
+"$tvsh" 'mkdir -p /var/lib/webosbrew/tvproject /var/lib/webosbrew/init.d'
+# the [n] keeps pkill from matching this very command line
+"$tvsh" 'pkill -f "[n]o-background-apps.sh" 2>/dev/null; true'
+for f in hosts-block-lg.txt stop-services stub-services no-preload-apps no-background-apps.sh privacy-settings.js home-client-permissions.json home-acg-role.json home-acg-manifest.json; do
+    "$tvsh" "cat > /var/lib/webosbrew/tvproject/$f" < "$here/tv/$f"
+done
+"$tvsh" 'chmod 755 /var/lib/webosbrew/tvproject/no-background-apps.sh /var/lib/webosbrew/tvproject/privacy-settings.js'
+"$tvsh" 'cat > /var/lib/webosbrew/init.d/20-tvproject-privacy && chmod 755 /var/lib/webosbrew/init.d/20-tvproject-privacy' < "$here/tv/20-tvproject-privacy"
+"$tvsh" 'cat > /var/lib/webosbrew/init.d/30-tvproject-home && chmod 755 /var/lib/webosbrew/init.d/30-tvproject-home && sync' < "$here/tv/30-tvproject-home"
+# only the privacy hook runs now; the Home hook is run by tools/install-home
+"$tvsh" '/var/lib/webosbrew/init.d/20-tvproject-privacy'
